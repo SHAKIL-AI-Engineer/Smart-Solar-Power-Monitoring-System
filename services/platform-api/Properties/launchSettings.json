@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "Solar.Api": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5080",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Logging__LogLevel__Microsoft": "Warning"
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/Api.Dockerfile
+    environment:
+      ALLOW_DEMO_LOGIN: "true"
+      ConnectionStrings__Sqlite: "Data Source=/app/data/solar.db"
+      Logging__LogLevel__Microsoft: Warning
+    volumes:
+      - solar-data:/app/data
+      - solar-keys:/root/.aspnet/DataProtection-Keys
+    restart: unless-stopped
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/Web.Dockerfile
+      args:
+        API_URL: http://api:5080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+volumes:
+  solar-data:
+  solar-keys:
