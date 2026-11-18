@@ -4,6 +4,14 @@
 
 All measurements are **synthetic**. Equipment control is disabled at the API. Demo authentication is for evaluating the simulator; real users and hardware require a later commissioning phase.
 
+## Vercel cloud demo
+
+The [deployed cloud demo](https://smart-solar-monitor-ashy.vercel.app) runs the dashboard and serverless API on Vercel. The production address is public; preview deployment addresses retain Vercel authentication.
+
+Cloud mode reconstructs synthetic measurements on request and polls every five seconds. It stores each visitor's scenario timeline, acknowledgments, and audit events in a private Vercel Blob record. Historical charts and CSV exports are explicitly labeled reconstructed simulation; they are not an MQTT ingestion archive. Sessions last eight hours, are isolated between visitors, and their storage records expire automatically after one day. The ASP.NET/SQLite/SQL Server/MQTT runtime below remains available for local and container use.
+
+See [Vercel deployment instructions](docs/vercel-deployment.md) for settings, environment variables, and verification.
+
 ![SolarOps simulated energy dashboard](docs/assets/overview.png)
 
 ## Run with Docker
@@ -85,6 +93,7 @@ Timestamps are stored and served in UTC. The interface displays `Asia/Dhaka`. Da
 
 ```sh
 dotnet test tests/platform-api
+npm run test:cloud
 npm run typecheck
 npm run build
 npx playwright install chromium

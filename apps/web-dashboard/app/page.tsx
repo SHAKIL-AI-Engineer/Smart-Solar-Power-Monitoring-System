@@ -65,6 +65,7 @@ export default function Dashboard() {
     "loading",
   );
   const [sites, setSites] = useState<Site[]>([]);
+  const [backend, setBackend] = useState<"dotnet" | "cloud">("dotnet");
   const [siteId, setSiteId] = useState("factory-01");
   const [view, setView] = useState<View>("Overview");
   const [range, setRange] = useState("24h");
@@ -90,7 +91,15 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetch("/api/auth/me")
-      .then((r) => setSession(r.ok ? "viewer" : "guest"))
+      .then(async (r) => {
+        if (!r.ok) {
+          setSession("guest");
+          return;
+        }
+        const identity = await r.json();
+        setBackend(identity.backend === "cloud" ? "cloud" : "dotnet");
+        setSession("viewer");
+      })
       .catch(() => setSession("guest"));
     const clock = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(clock);
@@ -109,15 +118,22 @@ export default function Dashboard() {
     if (session !== "viewer") return;
     const controller = new AbortController();
     const url = `/api/v1/sites/${siteId}`;
-    Promise.all([
-      api<Overview>(`${url}/overview`, { signal: controller.signal }),
-      api<History>(`${url}/telemetry?range=${range}`, {
-        signal: controller.signal,
-      }),
-      api<Alert[]>(`/api/v1/alerts?siteId=${siteId}`, {
-        signal: controller.signal,
-      }),
-    ])
+    const pending =
+      backend === "cloud"
+        ? api<Overview & { history: History; alertHistory: Alert[] }>(
+            `${url}/overview?range=${range}`,
+            { signal: controller.signal },
+          ).then((o) => [o, o.history, o.alertHistory] as const)
+        : Promise.all([
+            api<Overview>(`${url}/overview`, { signal: controller.signal }),
+            api<History>(`${url}/telemetry?range=${range}`, {
+              signal: controller.signal,
+            }),
+            api<Alert[]>(`/api/v1/alerts?siteId=${siteId}`, {
+              signal: controller.signal,
+            }),
+          ]);
+    pending
       .then(([overview, series, a]) => {
         setData(overview);
         setHistory(series);
@@ -128,9 +144,14 @@ export default function Dashboard() {
         if (e.name !== "AbortError") setError(e.message);
       });
     return () => controller.abort();
-  }, [session, siteId, range, tick]);
+  }, [session, siteId, range, tick, backend]);
   useEffect(() => {
     if (session !== "viewer") return;
+    if (backend === "cloud") {
+      setConnection("Connected · polling");
+      const timer = setInterval(() => refresh.current(), 5000);
+      return () => clearInterval(timer);
+    }
     let disposed = false;
     const hub = new HubConnectionBuilder()
       .withUrl("/hubs/telemetry")
@@ -140,10 +161,17 @@ export default function Dashboard() {
     hub.on("telemetry", () => refresh.current());
     hub.onreconnecting(() => setConnection("Reconnecting"));
     hub.onreconnected(async () => {
-      await hub.invoke("Subscribe", siteId);
-      if (!disposed) {
-        setConnection("Connected");
-        refresh.current();
+      try {
+        await hub.invoke("Subscribe", siteId);
+        if (!disposed) {
+          setConnection("Connected");
+          refresh.current();
+        }
+      } catch {
+        if (!disposed) {
+          setConnection("Polling fallback");
+          refresh.current();
+        }
       }
     });
     hub.onclose(() => {
@@ -166,13 +194,16 @@ export default function Dashboard() {
       clearInterval(timer);
       void hub.stop();
     };
-  }, [session, siteId]);
+  }, [session, siteId, backend]);
 
   async function login() {
     setBusy(true);
     setError("");
     try {
-      await api("/api/auth/demo", { method: "POST" });
+      const identity = await api<{ backend?: string }>("/api/auth/demo", {
+        method: "POST",
+      });
+      setBackend(identity.backend === "cloud" ? "cloud" : "dotnet");
       setSession("viewer");
     } catch (e) {
       setError(
@@ -290,6 +321,7 @@ export default function Dashboard() {
     ? Math.max(0, (now - Date.parse(live.measuredAt)) / 1000)
     : Infinity;
   const stale = !live || age > 15 || !!error;
+  const disconnected = data?.scenario === "offline";
   const zone = data?.site.timeZone ?? "Asia/Dhaka";
   const date = new Date(now).toLocaleDateString("en-GB", {
     timeZone: zone,
@@ -487,9 +519,15 @@ export default function Dashboard() {
               {data?.site.location ?? "Bangladesh"}
             </span>
             <div className="context-right">
-              <span className={`status ${stale ? "warning" : ""}`}>
+              <span
+                className={`status ${stale || disconnected ? "warning" : ""}`}
+              >
                 <i />
-                {stale ? "Data stale" : "Simulation online"}
+                {stale
+                  ? "Data stale"
+                  : disconnected
+                    ? "Gateway offline"
+                    : "Simulation online"}
               </span>
               <span className="context-divider" />
               <span>{date} · Dhaka time</span>
@@ -548,7 +586,10 @@ export default function Dashboard() {
           )}
           {live && stale && (
             <div className="stale-banner" role="status">
-              <Radio size={16} /> Last accepted sample:{" "}
+              <Radio size={16} />{" "}
+              {backend === "cloud"
+                ? "Last simulated sample:"
+                : "Last accepted sample:"}{" "}
               {timestamp(live.measuredAt)} ({Math.floor(age)}s ago). Values
               below are historical. Flow animation paused.
             </div>
@@ -663,8 +704,11 @@ export default function Dashboard() {
                       batteryOnly={view === "Battery"}
                     />
                     <div className="chart-footer">
-                      <FlaskConical size={12} /> Simulated measurements ·
-                      Missing intervals are not imputed
+                      <FlaskConical size={12} />{" "}
+                      {backend === "cloud"
+                        ? "Reconstructed simulation"
+                        : "Simulated measurements"}{" "}
+                      · Missing intervals are not imputed
                     </div>
                   </article>
                   {view === "Overview" && (
@@ -675,13 +719,17 @@ export default function Dashboard() {
                           <p>Where your energy is moving</p>
                         </div>
                         <span
-                          className={`live-label ${stale ? "text-amber" : ""}`}
+                          className={`live-label ${stale || disconnected ? "text-amber" : ""}`}
                         >
                           <i />
-                          {stale ? "STALE" : "SIMULATED"}
+                          {stale
+                            ? "STALE"
+                            : disconnected
+                              ? "OFFLINE"
+                              : "SIMULATED"}
                         </span>
                       </div>
-                      <EnergyFlow live={live} stale={stale} />
+                      <EnergyFlow live={live} stale={stale || disconnected} />
                     </article>
                   )}
                 </section>
@@ -708,6 +756,7 @@ export default function Dashboard() {
                       devices={data.devices}
                       live={live}
                       stale={stale}
+                      offline={disconnected}
                     />
                   </article>
                   <article className="panel insight-panel">
@@ -840,6 +889,7 @@ export default function Dashboard() {
                     devices={data.devices}
                     live={live}
                     stale={stale}
+                    offline={disconnected}
                     query={query}
                   />
                   <div className="registry-details">
@@ -987,7 +1037,13 @@ export default function Dashboard() {
                 Acknowledge alerts to record review; return to a normal scenario
                 to resolve faults.
               </li>
-              <li>Export the last 24 hours of accepted readings as CSV.</li>
+              <li>
+                Export the last 24 hours of{" "}
+                {backend === "cloud"
+                  ? "reconstructed simulator samples"
+                  : "accepted readings"}{" "}
+                as CSV.
+              </li>
             </ol>
             <p>
               Battery power: positive discharges, negative charges. Grid power:

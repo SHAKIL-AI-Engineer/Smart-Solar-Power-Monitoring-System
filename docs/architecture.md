@@ -1,5 +1,7 @@
 # Read-only MVP architecture
 
+The sections below describe the ASP.NET container/local runtime. The Vercel cloud demo uses a stateless Next.js API and isolated private Blob state; see [cloud deployment architecture](vercel-deployment.md). Its historical values are reconstructed simulation rather than accepted MQTT telemetry.
+
 ## High-level design
 
 The supplied enterprise design is implemented as its first read-only simulator deliverable. Two application processes run a Next.js dashboard and an ASP.NET Core modular API. A database persists accepted telemetry, simulator configuration, alerts, quarantine decisions, audit events, and an optional MQTT outbox.

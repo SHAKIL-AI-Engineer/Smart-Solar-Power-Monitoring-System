@@ -195,11 +195,13 @@ export const DeviceTable = memo(function DeviceTable({
   devices,
   live,
   stale,
+  offline = false,
   query = "",
 }: {
   devices: Device[];
   live: Live;
   stale: boolean;
+  offline?: boolean;
   query?: string;
 }) {
   const filtered = devices.filter((d) =>
@@ -220,59 +222,71 @@ export const DeviceTable = memo(function DeviceTable({
           </tr>
         </thead>
         <tbody>
-          {filtered.map((d, i) => (
-            <tr key={d.id}>
-              <td>
-                <span className="device-name">
-                  <span className={`device-icon icon-${i}`}>
-                    {i === 0 ? (
-                      <Sun size={16} />
-                    ) : i === 1 ? (
-                      <BatteryCharging size={16} />
-                    ) : i === 2 ? (
-                      <Cable size={16} />
-                    ) : (
-                      <Building2 size={16} />
-                    )}
+          {filtered.map((d) => {
+            const i =
+              d.type === "Inverter"
+                ? 0
+                : d.type === "Battery / PCS"
+                  ? 1
+                  : d.type === "Grid meter"
+                    ? 2
+                    : 3;
+            return (
+              <tr key={d.id}>
+                <td>
+                  <span className="device-name">
+                    <span className={`device-icon icon-${i}`}>
+                      {i === 0 ? (
+                        <Sun size={16} />
+                      ) : i === 1 ? (
+                        <BatteryCharging size={16} />
+                      ) : i === 2 ? (
+                        <Cable size={16} />
+                      ) : (
+                        <Building2 size={16} />
+                      )}
+                    </span>
+                    <span>
+                      <strong>{d.name}</strong>
+                      <small>{d.protocol}</small>
+                    </span>
                   </span>
-                  <span>
-                    <strong>{d.name}</strong>
-                    <small>{d.protocol}</small>
+                </td>
+                <td>{d.type}</td>
+                <td className="reading">
+                  {fmt(
+                    i === 0
+                      ? live.solar
+                      : i === 1
+                        ? live.soc
+                        : i === 2
+                          ? Math.abs(live.grid)
+                          : live.load,
+                  )}{" "}
+                  <span>{i === 1 ? "% SOC" : "kW"}</span>
+                </td>
+                <td>
+                  <span
+                    className={`status ${stale || offline ? "warning" : ""}`}
+                  >
+                    <i />
+                    {offline ? "Offline" : stale ? "Stale" : "Online (sim)"}
                   </span>
-                </span>
-              </td>
-              <td>{d.type}</td>
-              <td className="reading">
-                {fmt(
-                  i === 0
-                    ? live.solar
-                    : i === 1
-                      ? live.soc
-                      : i === 2
-                        ? Math.abs(live.grid)
-                        : live.load,
-                )}{" "}
-                <span>{i === 1 ? "% SOC" : "kW"}</span>
-              </td>
-              <td>
-                <span className={`status ${stale ? "warning" : ""}`}>
-                  <i />
-                  {stale ? "Stale" : "Online (sim)"}
-                </span>
-              </td>
-              <td>
-                <span
-                  className={
-                    i === 1 && live.temperature > 45 ? "text-amber" : "muted"
-                  }
-                >
-                  {i === 1 && live.temperature > 45
-                    ? "High temperature"
-                    : "Normal"}
-                </span>
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td>
+                  <span
+                    className={
+                      i === 1 && live.temperature > 45 ? "text-amber" : "muted"
+                    }
+                  >
+                    {i === 1 && live.temperature > 45
+                      ? "High temperature"
+                      : "Normal"}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
           {!filtered.length && (
             <tr>
               <td colSpan={5}>No devices match your search.</td>

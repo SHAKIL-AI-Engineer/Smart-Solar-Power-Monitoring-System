@@ -33,6 +33,7 @@ test("complete read-only operator journey", async ({ page }) => {
   await page.getByRole("button", { name: "Devices", exact: true }).click();
   await page.getByRole("textbox", { name: "Search devices" }).fill("Battery");
   await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody .reading")).toContainText("% SOC");
   await page
     .getByRole("combobox", { name: "Select site" })
     .selectOption("campus-02");
